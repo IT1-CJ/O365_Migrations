@@ -1,0 +1,59 @@
+# Import the Exchange Online module
+if (-not (Get-Module -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue)) {
+    Install-Module -Name ExchangeOnlineManagement -Force -AllowClobber
+}
+Import-Module ExchangeOnlineManagement
+
+# Define the log file path
+$LogFilePath = "C:\temp\DLSettingsLog.log"
+
+# Connect to Exchange Online
+$Credential = Get-Credential
+Connect-ExchangeOnline -Credential $Credential
+
+# Define the CSV file path
+$CsvInputFile = "C:\temp\ExportDistrolist.csv"
+
+# Import the CSV file
+$GroupInfo = Import-Csv -Path $CsvInputFile
+
+# Loop through the groups
+foreach ($Group in $GroupInfo) {
+    # Set the alias
+    try {
+        Set-DistributionGroup -Identity $Group.DisplayName -Alias $Group.Alias -ErrorAction Stop
+        Write-Host "Alias set for distribution group '$($Group.DisplayName)'."
+        Add-Content -Path $LogFilePath -Value "Alias set for distribution group '$($Group.DisplayName)'."
+    } catch {
+        Write-Host "Error setting alias for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+        Add-Content -Path $LogFilePath -Value "Error setting alias for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+    }
+
+    # Set the hidden from address lists
+    try {
+        Set-DistributionGroup -Identity $Group.DisplayName -HiddenFromAddressListsEnabled $Group.HiddenFromAddressLists -ErrorAction Stop
+        Write-Host "Hidden from address lists set for distribution group '$($Group.DisplayName)'."
+        Add-Content -Path $LogFilePath -Value "Hidden from address lists set for distribution group '$($Group.DisplayName)'."
+    } catch {
+        Write-Host "Error setting hidden from address lists for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+        Add-Content -Path $LogFilePath -Value "Error setting hidden from address lists for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+    }
+
+    # Set the member join restriction
+    try {
+        Set-DistributionGroup -Identity $Group.DisplayName -MemberJoinRestriction $Group.MemberJoinRestriction -ErrorAction Stop
+        Write-Host "Member join restriction set for distribution group '$($Group.DisplayName)'."
+        Add-Content -Path $LogFilePath -Value "Member join restriction set for distribution group '$($Group.DisplayName)'."
+    } catch {
+        Write-Host "Error setting member join restriction for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+        Add-Content -Path $LogFilePath -Value "Error setting member join restriction for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+    }
+
+    # Set the member depart restriction
+    try {
+        Set-DistributionGroup -Identity $Group.DisplayName -MemberDepartRestriction $Group.MemberDepartRestriction -ErrorAction Stop
+        Write-Host "Member depart restriction set for distribution group '$($Group.DisplayName)'."
+        Add-Content -Path $LogFilePath -Value "Member depart restriction set for distribution group '$($Group.DisplayName)'."
+    } catch {
+        Write-Host "Error setting member depart restriction for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+
