@@ -1,0 +1,17 @@
+# Replace 'UserEmailAddress' with the email address of the user
+$user = "hchico@domain.com"
+
+# Get the mailbox of the user
+$mailbox = Get-Mailbox -Identity $user
+
+# Get the Inbox rules of the user's mailbox
+$inboxRules = Get-InboxRule -Mailbox $mailbox.PrimarySmtpAddress.ToString()
+
+# Display the Inbox rules
+$inboxRules | Format-Table Name, Description, Active
+
+# Export the Inbox rules to a CSV file
+$inboxRules | Select-Object Name, Description, Active, @{Name="Mailbox";Expression={$mailbox.PrimarySmtpAddress.ToString()}} | Export-Csv -Path "C:\hchico_InboxRules_$user.csv" -NoTypeInformation
+
+
+Remove-InboxRule -Mailbox "kcash@domain.com" -Identity "aa"
