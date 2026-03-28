@@ -1,0 +1,30 @@
+# Connect to the Microsoft Graph API with the required scopes
+Connect-MgGraph -Scopes "LicenseManagement.ReadWrite.All"
+
+# Import the CSV file
+$users = Import-Csv -Path "D:\O365\bulk2.csv"
+
+# Iterate over each user in the CSV file
+foreach ($user in $users) {
+    # Get the user object
+    $userObject = Get-MgUser -UserId $user.UserPrincipalName
+
+    # Assign Office E3 license to the user
+    $e3SkuId = " 6fd2c87f-b296-42f0-b197-1e91e994b900" # Replace "your_tenant_name" with your actual tenant name
+    New-MgUserLicense -UserId $userObject.Id -AddLicenses @{ SkuId = $e3SkuId }
+}
+
+
+
+
+
+#Get Subscriptions:
+
+# Connect to the Microsoft Graph API
+Connect-MgGraph -Scopes "LicenseManagement.Read.All"
+
+# Get all licenses
+$licenses = Get-MgLicense
+
+# Display the licenses
+$licenses | Select-Object -Property DisplayName, SkuId
