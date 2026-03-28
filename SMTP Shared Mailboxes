@@ -1,0 +1,45 @@
+
+#Exchange Online:
+    #Modules: 
+    • Install-Module ExchangeOnlineManagement
+    • Import-Module ExchangeOnlineManagement
+
+# Connect to Exchange Online:
+Connect-ExchangeOnline
+
+#Get All Shared Mailboxes:
+Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited | Select-Object DisplayName,Userprincipalname
+
+#Add Alias to all Shared Mailboxes:
+
+# Output will be added to C:\temp folder. Open the Add-SMTP-Address.log with a text editor. For example, Notepad.
+Start-Transcript -Path C:\temp\Add-SMTPSharedMailboxes-Address.log -Append
+
+# Get all mailboxes
+$Mailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited
+
+# Loop through each mailbox
+foreach ($Mailbox in $Mailboxes) {
+
+    # Search for specified SMTP address in every mailbox
+    $SMTPAddress = $Mailbox.EmailAddresses | Where-Object { $_ -like "*@domain.onmicrosoft.com" }
+      
+    # Do nothing when there is already an SMTP address configured
+    If (($SMTPAddress | Measure-Object).Count -eq 0) {
+    
+        # Change @contoso.com to the domain that you want to add
+        $Address = "$($Mailbox.Alias)@domain.onmicrosoft.com"
+
+        # Remove the -WhatIf parameter after you tested and are sure to add the secondary email addresses
+        Set-Mailbox $Mailbox.DistinguishedName -EmailAddresses @{add = $Address } -WhatIf
+
+        # Write output
+        Write-Host "Adding $($Address) to $($Mailbox.Name) Mailbox" -ForegroundColor Green
+    }
+}å
+Stop-Transcript
+
+
+
+#Check Alias on shared mailboxes:
+Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited | Where-Object {$_.EmailAddresses -like "*@domain.onmicrosoft.com"} | Select-Object DisplayName, UserPrincipalName
