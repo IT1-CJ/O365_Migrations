@@ -1,0 +1,35 @@
+Here's an example of what the CSV file (SharedMailboxes.csv) might look like:
+Name,Alias,DisplayName,PrimarySmtpAddress
+Marketing,marketing,Marketing Team,marketing@yourdomain.com
+HR,hr,Human Resources,hr@yourdomain.com
+IT,it,IT Department,it@yourdomain.com
+Finance,finance,Finance Team,finance@yourdomain.com
+
+
+# Set the log file path and name
+$logFile = "C:\temp\AddSharedMailboxes_$(Get-Date -Format yyyyMMdd_HHmmss).log"
+
+# Bypass script blocked: (Typically always needed)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+# Exchange Online:
+# Modules:
+Install-Module ExchangeOnlineManagement
+Import-Module ExchangeOnlineManagement
+
+# Connect to Exchange Online
+Connect-ExchangeOnline
+
+# Import the CSV file
+$sharedMailboxes = Import-Csv -Path "C:\Path\To\SharedMailboxes.csv"
+
+# Loop through each row in the CSV file
+foreach ($sharedMailbox in $sharedMailboxes) {
+    # Create the shared mailbox
+    $newMailbox = New-Mailbox -Name $sharedMailbox.Name -Shared -Alias $sharedMailbox.Alias -DisplayName $sharedMailbox.DisplayName -PrimarySmtpAddress $sharedMailbox.PrimarySmtpAddress
+
+    # Log the creation of the shared mailbox
+    $logMessage = "Created shared mailbox: $($sharedMailbox.Name) with alias $($sharedMailbox.Alias) and primary SMTP address $($sharedMailbox.PrimarySmtpAddress)"
+    Write-Output $logMessage
+    $logMessage | Add-Content -Path $logFile
+}
