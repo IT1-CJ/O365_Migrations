@@ -1,0 +1,40 @@
+Please replace "yourdomain" with your actual onmicrosoft.com domain name.
+
+All commands are used with Connect-ExchangeOnline
+
+#Bypass script blocked:( Typically always needed:)
+	• Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+#Exchange Online:
+	#Modules: 
+	• Install-Module ExchangeOnlineManagement
+	• Import-Module ExchangeOnlineManagement
+
+# Connect to Exchange Online
+	Connect-ExchangeOnline
+
+#Mailboxes:
+
+Get-Mailbox -ResultSize Unlimited | ForEach-Object {
+    $mailbox = $_
+    $newSmtpAddress = $mailbox.Alias + "@yourdomain.onmicrosoft.com"
+    Set-Mailbox $mailbox.Identity -EmailAddresses @{Add=$newSmtpAddress}
+}
+
+
+#Microsoft 365 Groups
+
+Get-UnifiedGroup -ResultSize Unlimited | ForEach-Object {
+    $group = $_
+    $newSmtpAddress = $group.Alias + "@yourdomain.onmicrosoft.com"
+    Set-UnifiedGroup $group.Identity -EmailAddresses @{Add=$newSmtpAddress}
+}
+
+
+#Distribution Lists:
+
+Get-DistributionGroup -ResultSize Unlimited | ForEach-Object {
+    $distributionGroup = $_
+    $newSmtpAddress = $distributionGroup.Alias + "@yourdomain.onmicrosoft.com"
+    Set-DistributionGroup $distributionGroup.Identity -EmailAddresses @{Add=$newSmtpAddress}
+}
