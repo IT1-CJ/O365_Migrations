@@ -1,0 +1,32 @@
+
+Here is an example CSV file with headers:
+
+"GroupEmail","UserPrincipalName"
+"hr@example.com","john.doe@example.com"
+"hr@example.com","jane.doe@example.com"
+"marketing@example.com","bob.smith@example.com"
+"itdept@example.com","alice.johnson@example.com"
+"itdept@example.com","mike.brown@example.com"
+
+
+
+# Install Module
+Install-Module -Name Microsoft.Graph
+
+# Connect to Microsoft Graph
+Connect-MgGraph -Scopes "Group.ReadWrite.All", "User.ReadWrite.All" -NoWelcome
+
+# Import the CSV file
+$members = Import-Csv -Path "C:\Path\To\Members.csv"
+
+# Iterate over each member in the CSV file
+foreach ($member in $members) {
+    # Get the group object
+    $group = Get-MgGroup -Filter "mail eq '$($member.GroupEmail)'"
+
+    # Get the user object
+    $user = Get-MgUser -Filter "userPrincipalName eq '$($member.UserPrincipalName)'"
+
+    # Add the user to the group
+    New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $user.Id | Out-Null
+}
