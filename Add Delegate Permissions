@@ -1,0 +1,30 @@
+The CSV file should have the following format:
+
+Mailbox,Delegate,Permission,InheritanceType,AutoMapping
+user1@example.com,delegate1@example.com,Editor,All,TRUE
+user2@example.com,delegate2@example.com,Contributor,Folder,TRUE
+sharedmailbox@example.com,delegate3@example.com,Owner,All,FALSE
+resource@example.com,delegate4@example.com,Editor,All,TRUE
+
+
+#Bypass script blocked:( Typically always needed:)
+	• Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+#Exchange Online:
+	Modules: 
+	• Install-Module ExchangeOnlineManagement
+	• Import-Module ExchangeOnlineManagement
+	• Connect-ExchangeOnline
+
+
+# Import the CSV file
+$delegates = Import-Csv -Path "C:\temp\delegates.csv"
+
+# Loop through each row in the CSV file
+foreach ($delegate in $delegates) {
+    # Get the mailbox or resource
+    $mailbox = Get-EXOMailbox -Identity $delegate.Mailbox
+
+    # Add the delegate
+    Add-RecipientPermission -Identity $mailbox.Identity -Trustee $delegate.Delegate -AccessRights $delegate.Permission -InheritanceType $delegate.InheritanceType -AutoMapping $delegate.AutoMapping
+}
