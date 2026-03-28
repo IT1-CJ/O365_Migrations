@@ -1,0 +1,40 @@
+# Import the Exchange Online module
+if (-not (Get-Module -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue)) {
+    Install-Module -Name ExchangeOnlineManagement -Force -AllowClobber
+}
+Import-Module ExchangeOnlineManagement
+
+# Define the log file path
+$LogFilePath = "C:\temp\DLCreationLog.log"
+
+# Connect to Exchange Online
+$Credential = Connect-ExchangeOnline
+
+# Define the CSV file path
+$CsvInputFile = "C:\temp\ExportDistrolist.csv"
+
+# Import the CSV file
+$GroupInfo = Import-Csv -Path $CsvInputFile
+
+# Loop through the groups
+foreach ($Group in $GroupInfo) {
+    # Create a new distribution group
+    try {
+        New-DistributionGroup -Name $Group.DisplayName -PrimarySmtpAddress $Group.PrimarySmtpAddress -ErrorAction Stop
+        Write-Host "Distribution group '$($Group.DisplayName)' created successfully."
+        Add-Content -Path $LogFilePath -Value "Distribution group '$($Group.DisplayName)' created successfully."
+    } catch {
+        Write-Host "Error creating distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+        Add-Content -Path $LogFilePath -Value "Error creating distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+    }
+
+    # Set the owner
+    try {
+        Set-DistributionGroup -Identity $Group.DisplayName -ManagedBy $Group.Owner -ErrorAction Stop
+        Write-Host "Owner set for distribution group '$($Group.DisplayName)' to '$($Group.Owner)'."
+        Add-Content -Path $LogFilePath -Value "Owner set for distribution group '$($Group.DisplayName)' to '$($Group.Owner)'."
+    } catch {
+        Write-Host "Error setting owner for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+        Add-Content -Path $LogFilePath -Value "Error setting owner for distribution group '$($Group.DisplayName)': $($Error[0].Message)"
+    }
+}
