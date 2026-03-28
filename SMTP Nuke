@@ -1,0 +1,344 @@
+<#
+
+Below is a full Exchange Online PowerShell script that:
+
+processes mailboxes, shared mailboxes, and room/resource mailboxes
+processes Microsoft 365 Groups
+processes mail-enabled security groups
+processes distribution groups
+removes aliases on the legacy domain
+makes sure the object keeps an onmicrosoft.com address
+sets the primary SMTP to alias@tenant.onmicrosoft.com
+writes a live on-screen log and also a transcript/log file
+
+This uses the Exchange recipient email address properties that Microsoft documents for mailboxes, Microsoft 365 Groups, and distribution/mail-enabled security groups.
+
+Important note before you run it:
+If any of these objects are DirSync / Entra Connect synced from on-prem AD, changing proxy addresses in Exchange Online can fail or be overwritten. In those cases, the address cleanup needs to be done on-prem and then synced. Microsoft documents that some Exchange attributes for synced recipients are managed from on-premises.
+
+.SYNOPSIS
+    Removes legacy-domain aliases from Exchange Online recipients and converts
+    the primary SMTP to the tenant onmicrosoft.com domain.
+
+.DESCRIPTION
+    Targets:
+      - User mailboxes
+      - Shared mailboxes
+      - Room mailboxes
+      - Equipment mailboxes
+      - Microsoft 365 Groups
+      - Mail-enabled security groups
+      - Distribution groups
+
+    For each object:
+      - Removes all SMTP aliases using the legacy domain
+      - Ensures an onmicrosoft.com address exists
+      - Sets the PRIMARY SMTP to onmicrosoft.com
+      - Logs all actions to screen and file
+
+.NOTES
+    Requires:
+      - ExchangeOnlineManagement module
+      - Appropriate Exchange Online permissions
+
+    WARNING:
+      - For Entra Connect / DirSync-synced objects, cloud-side edits may fail
+        or be overwritten. Update the addresses on-premises in that case.
+#>
+
+#region ===== CONFIG =====
+
+# Legacy domain to remove
+$LegacyDomain     = "legacydomain.com"
+
+# Your tenant onmicrosoft domain to set as the final address
+$OnMicrosoftDomain = "tenantname.onmicrosoft.com"
+
+# Optional safety switch:
+# $true  = only show what would change
+# $false = actually make changes
+$WhatIfMode = $true 
+
+# Log file
+$TimeStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$LogFolder = "C:\Logs"
+$LogFile   = Join-Path $LogFolder "Remove-LegacyDomain-Aliases-$TimeStamp.log"
+
+#endregion
+
+#region ===== PREP =====
+
+if (-not (Test-Path $LogFolder)) {
+    New-Item -Path $LogFolder -ItemType Directory -Force | Out-Null
+}
+
+Start-Transcript -Path $LogFile -Append | Out-Null
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet("INFO","WARN","ERROR","SUCCESS","ACTION")]
+        [string]$Level = "INFO"
+    )
+
+    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$ts] [$Level] $Message"
+
+    switch ($Level) {
+        "INFO"    { Write-Host $line -ForegroundColor Cyan }
+        "WARN"    { Write-Host $line -ForegroundColor Yellow }
+        "ERROR"   { Write-Host $line -ForegroundColor Red }
+        "SUCCESS" { Write-Host $line -ForegroundColor Green }
+        "ACTION"  { Write-Host $line -ForegroundColor Magenta }
+    }
+}
+
+function Normalize-EmailAddresses {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$EmailAddresses
+    )
+
+    # Return all addresses as simple strings
+    return @($EmailAddresses | ForEach-Object { $_.ToString() })
+}
+
+function Get-NewEmailAddressSet {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$CurrentAddresses,
+
+        [Parameter(Mandatory)]
+        [string]$NewPrimaryAddress,
+
+        [Parameter(Mandatory)]
+        [string]$LegacyDomain
+    )
+
+    $newList = New-Object System.Collections.Generic.List[string]
+
+    foreach ($addr in $CurrentAddresses) {
+        # Remove ALL smtp aliases from the legacy domain
+        if ($addr -match "^(SMTP|smtp):.+@" + [regex]::Escape($LegacyDomain) + "$") {
+            continue
+        }
+
+        # Remove any existing primary SMTP entry; we will rebuild it cleanly
+        if ($addr -cmatch "^SMTP:") {
+            continue
+        }
+
+        # Keep all non-primary remaining addresses
+        $newList.Add($addr)
+    }
+
+    # Ensure the new primary is the only uppercase SMTP entry
+    $newPrimaryEntry = "SMTP:$NewPrimaryAddress"
+    $newSecondaryEntry = "smtp:$NewPrimaryAddress"
+
+    # Remove case-insensitive duplicates of the new primary if they already exist
+    $deduped = $newList | Where-Object {
+        $_.Substring($_.IndexOf(":") + 1).ToLower() -ne $NewPrimaryAddress.ToLower()
+    }
+
+    $final = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $deduped) {
+        $final.Add($entry)
+    }
+
+    # Add primary first
+    $final.Insert(0, $newPrimaryEntry)
+
+    return @($final)
+}
+
+function Test-IsSyncedObject {
+    param(
+        [Parameter(Mandatory)]
+        $Recipient
+    )
+
+    # Exchange Online objects often expose this as IsDirSynced or DirSyncEnabled depending on type
+    if ($null -ne $Recipient.IsDirSynced -and $Recipient.IsDirSynced -eq $true) { return $true }
+    if ($null -ne $Recipient.DirSyncEnabled -and $Recipient.DirSyncEnabled -eq $true) { return $true }
+
+    return $false
+}
+
+function Update-RecipientAddresses {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Identity,
+
+        [Parameter(Mandatory)]
+        [ValidateSet("Mailbox","UnifiedGroup","DistributionGroup")]
+        [string]$RecipientType,
+
+        [Parameter(Mandatory)]
+        [string]$DisplayName,
+
+        [Parameter(Mandatory)]
+        [string[]]$CurrentAddresses,
+
+        [Parameter(Mandatory)]
+        [string]$Alias,
+
+        [Parameter()]
+        [bool]$IsSynced = $false
+    )
+
+    try {
+        if ([string]::IsNullOrWhiteSpace($Alias)) {
+            Write-Log "Skipping '$DisplayName' because Alias is blank." "WARN"
+            return
+        }
+
+        if ($IsSynced) {
+            Write-Log "Skipping '$DisplayName' because it appears to be DirSync/on-prem managed." "WARN"
+            return
+        }
+
+        $newPrimary = "$Alias@$OnMicrosoftDomain"
+        $newAddresses = Get-NewEmailAddressSet -CurrentAddresses $CurrentAddresses -NewPrimaryAddress $newPrimary -LegacyDomain $LegacyDomain
+
+        $currentJoined = ($CurrentAddresses | Sort-Object) -join "|"
+        $newJoined     = ($newAddresses | Sort-Object) -join "|"
+
+        if ($currentJoined -eq $newJoined) {
+            Write-Log "No changes needed for '$DisplayName' ($Identity)." "INFO"
+            return
+        }
+
+        Write-Log "Processing '$DisplayName' ($Identity)" "ACTION"
+        Write-Log "New primary SMTP will be: $newPrimary" "INFO"
+
+        if ($WhatIfMode) {
+            Write-Log "WHATIF: Would update $RecipientType '$DisplayName'" "WARN"
+            Write-Host "----- CURRENT ADDRESSES -----" -ForegroundColor DarkGray
+            $CurrentAddresses | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+            Write-Host "----- NEW ADDRESSES -----" -ForegroundColor DarkGray
+            $newAddresses | ForEach-Object { Write-Host $_ -ForegroundColor White }
+            return
+        }
+
+        switch ($RecipientType) {
+            "Mailbox" {
+                Set-Mailbox -Identity $Identity -EmailAddresses $newAddresses -ErrorAction Stop
+            }
+            "UnifiedGroup" {
+                Set-UnifiedGroup -Identity $Identity -EmailAddresses $newAddresses -ErrorAction Stop
+            }
+            "DistributionGroup" {
+                Set-DistributionGroup -Identity $Identity -EmailAddresses $newAddresses -ErrorAction Stop
+            }
+        }
+
+        Write-Log "Updated '$DisplayName' successfully." "SUCCESS"
+    }
+    catch {
+        Write-Log "Failed updating '$DisplayName' ($Identity). Error: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+#endregion
+
+#region ===== CONNECT =====
+
+try {
+    Write-Log "Connecting to Exchange Online..." "INFO"
+    Import-Module ExchangeOnlineManagement -ErrorAction Stop
+    Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+    Write-Log "Connected to Exchange Online." "SUCCESS"
+}
+catch {
+    Write-Log "Failed to connect to Exchange Online. $($_.Exception.Message)" "ERROR"
+    Stop-Transcript | Out-Null
+    throw
+}
+
+#endregion
+
+#region ===== MAILBOXES =====
+
+Write-Log "Starting mailbox processing..." "INFO"
+
+$mailboxes = Get-EXOMailbox -ResultSize Unlimited -Properties DisplayName,Alias,EmailAddresses,RecipientTypeDetails,PrimarySmtpAddress,IsDirSynced
+
+$mailboxesToProcess = $mailboxes | Where-Object {
+    $_.RecipientTypeDetails -in @(
+        "UserMailbox",
+        "SharedMailbox",
+        "RoomMailbox",
+        "EquipmentMailbox"
+    )
+}
+
+foreach ($mbx in $mailboxesToProcess) {
+    $addresses = Normalize-EmailAddresses -EmailAddresses $mbx.EmailAddresses
+
+    Update-RecipientAddresses `
+        -Identity $mbx.Identity `
+        -RecipientType "Mailbox" `
+        -DisplayName $mbx.DisplayName `
+        -CurrentAddresses $addresses `
+        -Alias $mbx.Alias `
+        -IsSynced (Test-IsSyncedObject -Recipient $mbx)
+}
+
+#endregion
+
+#region ===== MICROSOFT 365 GROUPS =====
+
+Write-Log "Starting Microsoft 365 Group processing..." "INFO"
+
+$unifiedGroups = Get-UnifiedGroup -ResultSize Unlimited
+
+foreach ($grp in $unifiedGroups) {
+    $addresses = Normalize-EmailAddresses -EmailAddresses $grp.EmailAddresses
+
+    # Try Alias first, then fallback from primary SMTP local-part
+    $alias = $grp.Alias
+    if ([string]::IsNullOrWhiteSpace($alias) -and $grp.PrimarySmtpAddress) {
+        $alias = ($grp.PrimarySmtpAddress.ToString().Split("@"))[0]
+    }
+
+    Update-RecipientAddresses `
+        -Identity $grp.Identity `
+        -RecipientType "UnifiedGroup" `
+        -DisplayName $grp.DisplayName `
+        -CurrentAddresses $addresses `
+        -Alias $alias `
+        -IsSynced $false
+}
+
+#endregion
+
+#region ===== DISTRIBUTION + MAIL-ENABLED SECURITY GROUPS =====
+
+Write-Log "Starting distribution group and mail-enabled security group processing..." "INFO"
+
+$allGroups = Get-DistributionGroup -ResultSize Unlimited
+
+foreach ($grp in $allGroups) {
+    $addresses = Normalize-EmailAddresses -EmailAddresses $grp.EmailAddresses
+
+    Update-RecipientAddresses `
+        -Identity $grp.Identity `
+        -RecipientType "DistributionGroup" `
+        -DisplayName $grp.DisplayName `
+        -CurrentAddresses $addresses `
+        -Alias $grp.Alias `
+        -IsSynced (Test-IsSyncedObject -Recipient $grp)
+}
+
+#endregion
+
+#region ===== DONE =====
+
+Write-Log "Processing complete." "SUCCESS"
+Write-Log "Log file: $LogFile" "INFO"
+
+Disconnect-ExchangeOnline -Confirm:$false
+Stop-Transcript | Out-Null
+
+#endregion
