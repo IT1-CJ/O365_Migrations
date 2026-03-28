@@ -1,0 +1,23 @@
+Here is an example CSV file with headers:
+
+"DisplayName","MailNickname","Description"
+"HR Team","hr","Human Resources Team"
+"Marketing Team","marketing","Marketing Department"
+"IT Department","itdept","Information Technology Department"
+"Sales Team","sales","Sales Department"
+
+
+# Install Module
+Install-Module -Name Microsoft.Graph
+
+# Connect to Microsoft Graph
+Connect-MgGraph -Scopes "Group.ReadWrite.All" -NoWelcome
+
+# Import the CSV file
+$groups = Import-Csv -Path "C:\Path\To\Groups.csv"
+
+# Iterate over each group in the CSV file
+foreach ($group in $groups) {
+    # Create the group
+    New-MgGroup -DisplayName $group.DisplayName -MailEnabled $true -MailNickname $group.MailNickname -SecurityEnabled $false -GroupTypes Unified -IsAssignableToRole -MailboxEnabled $true -TeamEnabled $true
+}
