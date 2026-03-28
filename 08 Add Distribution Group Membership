@@ -1,0 +1,28 @@
+Here is an example CSV file with headers:
+
+"GroupAlias","UserPrincipalName"
+"hrteam","john.doe@example.com"
+"hrteam","jane.doe@example.com"
+"marketingteam","bob.smith@example.com"
+"itdept","alice.johnson@example.com"
+"itdept","mike.brown@example.com"
+
+
+#Bypass script blocked:( Typically always needed:)
+	• Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+#Exchange Online:
+	Modules: 
+	• Install-Module ExchangeOnlineManagement
+	• Import-Module ExchangeOnlineManagement
+
+# Connect to Exchange Online
+Connect-ExchangeOnline
+
+# Import the CSV file
+$members = Import-Csv -Path "C:\Path\To\Members.csv"
+
+# Iterate over each member in the CSV file
+foreach ($member in $members) {
+    # Add the member to the unified group
+    Add-UnifiedGroupLinks -Identity $member.GroupAlias -Links $member.UserPrincipalName -LinkType Membe
