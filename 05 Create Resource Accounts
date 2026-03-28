@@ -1,0 +1,36 @@
+Here's an example of what the CSV file (Rooms.csv) might look like:
+Name,Alias,DisplayName,PrimarySmtpAddress,Capacity,ResourceCapacity
+Conference Room 1,confroom1,Conference Room 1,confroom1@yourdomain.com,8,8
+Conference Room 2,confroom2,Conference Room 2,confroom2@yourdomain.com,12,12
+Meeting Room 3,meetroom3,Meeting Room 3,meetroom3@yourdomain.com,6,6
+Training Room,training,Training Room,training@yourdomain.com,20,20
+
+
+
+# Set the log file path and name
+$logFile = "C:\temp\AddResourceRooms_$(Get-Date -Format yyyyMMdd_HHmmss).log"
+
+# Bypass script blocked: (Typically always needed)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+# Exchange Online:
+# Modules:
+Install-Module ExchangeOnlineManagement
+Import-Module ExchangeOnlineManagement
+
+# Connect to Exchange Online
+Connect-ExchangeOnline
+
+# Import the CSV file
+$rooms = Import-Csv -Path "C:\Path\To\Rooms.csv"
+
+# Loop through each row in the CSV file
+foreach ($room in $rooms) {
+    # Create the room mailbox
+    $newMailbox = New-Mailbox -Name $room.Name -Room -Alias $room.Alias -DisplayName $room.DisplayName -PrimarySmtpAddress $room.PrimarySmtpAddress
+
+    # Log the creation of the room mailbox
+    $logMessage = "Created room mailbox: $($room.Name) with alias $($room.Alias) and primary SMTP address $($room.PrimarySmtpAddress)"
+    Write-Output $logMessage
+    $logMessage | Add-Content -Path $logFile
+}
