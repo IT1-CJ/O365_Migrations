@@ -1,0 +1,35 @@
+# Bypass script blocked: (Typically always needed:)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+# Install Module
+Install-Module -Name Microsoft.Graph
+
+# Connect to the Microsoft Graph API with the required scopes
+Connect-MgGraph -Scopes "User.ReadWrite.All"
+
+# Set the log file path and create the folder if it doesn't exist
+$logFolderPath = "C:\temp"
+$logFilePath = "$logFolderPath\CreateNewUser_$(Get-Date -Format yyyyMMdd_HHmmss).txt"
+if (!(Test-Path -Path $logFolderPath)) {
+    New-Item -ItemType Directory -Path $logFolderPath
+}
+
+# Import the CSV file
+$users = Import-Csv -Path "D:\O365\bulk2.csv"
+
+# Iterate over each user in the CSV file
+foreach ($user in $users) {
+    # Check if the user already exists
+    $existingUser = Get-MgUser -Filter "userPrincipalName eq '$($user.UserPrincipalName)'"
+    if ($existingUser) {
+        Write-Host "User already exists: $($user.UserPrincipalName)" -ForegroundColor Yellow
+        Add-Content -Path $logFilePath -Value "User already exists: $($user.UserPrincipalName)"
+    } else {
+        # Create a new user object
+        $newUser = New-MgUser -DisplayName $user.DisplayName -GivenName $user.GivenName -Surname $user.Surname -UserPrincipalName $user.UserPrincipalName -MailNickname $user.UserPrincipalName.Split("@")[0] -PasswordProfile @{ ForceChangePasswordNextSignIn = $true; Password = $user.Password } -JobTitle $user.JobTitle -Department $user.Department -UsageLocation $user.UsageLocation -OfficeLocation $user.OfficeLocation -CompanyName $user.CompanyName -AccountEnabled
+        
+        # Write a message to the console indicating that the user was created
+        Write-Host "User created: $($newUser.UserPrincipalName)" -ForegroundColor Green
+        Add-Content -Path $logFilePath -Value "User created: $($newUser.UserPrincipalName)"
+    }
+}
