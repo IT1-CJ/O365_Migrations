@@ -1,0 +1,31 @@
+Here is an example CSV file with headers:
+
+"DisplayName","Alias","PrimarySMTPAddress",
+"HR Team","hrteam","hrteam@example.com"
+"MarketingTeam","marketingteam","marketingteam@example.com"
+
+#Bypass script blocked:( Typically always needed:) 
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force 
+
+
+# Connect to Exchange Online 
+Connect-ExchangeOnline 
+
+
+# Import the Exchange Online Management module
+Import-Module -Name ExchangeOnlineManagement
+
+
+# Set the path to the CSV file
+$csvPath = "C:\AEHNTEST\DL.csv"
+
+
+# Import the CSV file
+$dlData = Import-Csv -Path $csvPath
+
+
+# Loop through each row in the CSV file
+foreach ($row in $dlData) {
+  # Create a new Distribution List
+  New-DistributionGroup -Name $row.DisplayName -Alias $row.Alias -PrimarySmtpAddress $row.PrimarySmtpAddress
+}
